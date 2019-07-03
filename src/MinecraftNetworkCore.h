@@ -4,6 +4,8 @@
 
 #include "MinecraftNetworkDataTypes.h"
 
+#define LOG_PACKETS_INFO
+
 struct PlayerPosAndLook
 {
 	Minecraft_Double x = 9999999999.0L;
@@ -61,6 +63,12 @@ struct GamePacket
 	Minecraft_Int packetID;
 	DataBuffer data;/* packet id(that is already written to packetID) and actual data */
 };
+
+void RecvAndDispatchGamePacket(Player& player);
+
+/* Clientbound packets*/
+void JoinGamePacket(Player& player, GamePacket* packet); // 0x25 in protocol 404
+void PlayerPositionAndLookPacket(Player& player, GamePacket* packet); // 0x32 in protocol 404
 
 void ConnectToServer(Player& player, const std::string& nickname, const std::string& ip, const std::string& port);
 void DisconnectFromServer(Player& player);

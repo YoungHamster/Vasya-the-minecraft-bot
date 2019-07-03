@@ -1,9 +1,95 @@
 #include "MinecraftNetworkCore.h"
 
+void RecvAndDispatchGamePacket(Player& player)
+{
+	if (player.connection.connectionState != Play)
+	{
+		std::cout << player.generalInfo.nickname << ": Critical error! Called RecvAndDispatchGamePacket function for player with wrong connection state!" << std::endl;
+		DisconnectFromServer(player);
+		return;
+	}
+	memset(player.connection.receivingBuffer, 0, MAX_PACKET_SIZE);
+	int recvSize = player.connection.tcpconnection.RecvData(player.connection.receivingBuffer, MAX_PACKET_SIZE);
+	if (recvSize <= 0)
+	{
+		DisconnectFromServer(player);
+		return;
+	}
+	GamePacket* packet = ParseGamePacket(player.connection.receivingBuffer, player.connection.compressionThreshold);
+	//std::cout << player.generalInfo.nickname << ": Received packet with id: 0x" << std::hex << packet->packetID << std::dec << std::endl;
+	switch (packet->packetID)
+	{
+	case 0x25: JoinGamePacket(player, packet); break;
+	case 0x32: PlayerPositionAndLookPacket(player, packet); break;
+	}
+	delete packet;
+}
+
+void JoinGamePacket(Player& player, GamePacket* packet)
+{
+	player.gameplayInfo.entityID = packet->data.ReadInt();
+	player.gameplayInfo.gamemode = packet->data.ReadUnsignedByte();
+	player.gameplayInfo.dimension = packet->data.ReadInt();
+	player.serverInfo.difficulty = packet->data.ReadUnsignedByte();
+	player.serverInfo.maxPlayers = packet->data.ReadUnsignedByte();
+	player.serverInfo.levelType = packet->data.ReadMinecraftString(16);
+	bool reducedDebugInfo = packet->data.ReadBool();
+#ifdef LOG_PACKETS_INFO
+	std::cout << player.generalInfo.nickname << ": my entity id is: " << player.gameplayInfo.entityID << std::endl;
+	std::cout << player.generalInfo.nickname << ": my gamemode is: " << (unsigned int)player.gameplayInfo.gamemode << std::endl;
+	std::cout << player.generalInfo.nickname << ": i'm in dimension: " << player.gameplayInfo.dimension << std::endl;
+	std::cout << player.generalInfo.nickname << ": server difficulty is: " << (unsigned int)player.serverInfo.difficulty << std::endl;
+	std::cout << player.generalInfo.nickname << ": server max player is: " << (unsigned int)player.serverInfo.maxPlayers << std::endl;
+	std::cout << player.generalInfo.nickname << ": server level type is: " << player.serverInfo.levelType << std::endl;
+	std::cout << player.generalInfo.nickname << ": server reduced debug info is: " << reducedDebugInfo << std::endl;
+#endif
+}
+
+void PlayerPositionAndLookPacket(Player& player, GamePacket* packet)
+{
+	player.connection.connectionState = Login;
+
+
+
+
+
+
+
+	player.gameplayInfo.positionAndLook.x = packet->data.ReadDouble();
+	player.gameplayInfo.positionAndLook.y = packet->data.ReadDouble();
+	player.gameplayInfo.positionAndLook.z = packet->data.ReadDouble();
+	player.gameplayInfo.positionAndLook.yaw = packet->data.ReadFloat();
+	player.gameplayInfo.positionAndLook.pitch = packet->data.ReadFloat();
+	Minecraft_Byte flags = packet->data.ReadByte();
+	if ((flags & 0x01) || (flags & 0x02) || (flags & 0x04) || (flags & 0x08) || (flags & 0x10))
+		std::cout << player.generalInfo.nickname << ": Error! Received relative position or look, don't know how to handle it!" << std::endl;
+	Minecraft_Int teleportID = packet->data.ReadVarInt();
+#ifdef LOG_PACKETS_INFO
+	std::cout << player.generalInfo.nickname << ": Received Player postion and look! (" << player.gameplayInfo.positionAndLook.x
+		<< ", " << player.gameplayInfo.positionAndLook.y << ", " << player.gameplayInfo.positionAndLook.z << "), (" << player.gameplayInfo.positionAndLook.yaw
+		<< ", " << player.gameplayInfo.positionAndLook.pitch << ")" << std::endl;
+#endif
+	// teleport confirm
+	DataBuffer teleportConfirm;
+	teleportConfirm.AllocateBuffer(10);
+	teleportConfirm.WriteVarInt(0x00);
+	teleportConfirm.WriteVarInt(teleportID);
+	SendGamePacket(teleportConfirm, player.connection.tcpconnection, player.connection.compressionThreshold);
+}
+
 void ConnectToServer(Player& player, const std::string& nickname, const std::string& ip, const std::string& port)
 {
 	player.generalInfo.nickname = nickname;
-	player.connection.tcpconnection.ConnectToServer(ip, port);
+	if (!player.connection.tcpconnection.ConnectToServer(ip, port))
+	{
+		player.connection.connectionState = Disconnected;
+		return;
+	}
+	if (player.connection.receivingBuffer != nullptr)
+	{
+		delete[] player.connection.receivingBuffer;
+	}
+	player.connection.receivingBuffer = new char[MAX_PACKET_SIZE];
 
 	DataBuffer sendBuffer;
 	// Send handshake packet
@@ -25,23 +111,21 @@ void ConnectToServer(Player& player, const std::string& nickname, const std::str
 
 	SendGamePacket(sendBuffer, player.connection.tcpconnection, player.connection.compressionThreshold);
 
-	char recvBuffer[10000];// 10.000 bytes for packets, that are being received while connecting to server should be more than enough
-
-	int recvSize = player.connection.tcpconnection.RecvData(recvBuffer, 10000);
+	memset(player.connection.receivingBuffer, 0, MAX_PACKET_SIZE);
+	int recvSize = player.connection.tcpconnection.RecvData(player.connection.receivingBuffer, MAX_PACKET_SIZE);
 	if (recvSize <= 0)
 	{
-		player.connection.connectionState = Disconnected;
+		DisconnectFromServer(player);
 		return;
 	}
 
-	GamePacket* newPacket = ParseGamePacket(recvBuffer, player.connection.compressionThreshold);
+	GamePacket* newPacket = ParseGamePacket(player.connection.receivingBuffer, player.connection.compressionThreshold);
 	std::string uuid;
 	switch (newPacket->packetID)
 	{
 	case 0x01: std::cout << player.generalInfo.nickname << ": Can't connect! Server requested encryption, but this client doesn't support it.\n \
 							Try offline mode, if it doesn't help idk what to do. Turn compruter off and on again." << std::endl;
-		player.connection.connectionState = Disconnected;
-		player.connection.tcpconnection.CloseConnection();
+		DisconnectFromServer(player);
 		return;
 	case 0x02:
 		uuid = newPacket->data.ReadMinecraftString(36);
@@ -55,14 +139,15 @@ void ConnectToServer(Player& player, const std::string& nickname, const std::str
 	}
 	delete newPacket;
 
-	recvSize = player.connection.tcpconnection.RecvData(recvBuffer, 10000);
+	memset(player.connection.receivingBuffer, 0, recvSize);
+	recvSize = player.connection.tcpconnection.RecvData(player.connection.receivingBuffer, MAX_PACKET_SIZE);
 	if (recvSize <= 0)
 	{
-		player.connection.connectionState = Disconnected;
+		DisconnectFromServer(player);
 		return;
 	}
 
-	newPacket = ParseGamePacket(recvBuffer, player.connection.compressionThreshold);
+	newPacket = ParseGamePacket(player.connection.receivingBuffer, player.connection.compressionThreshold);
 
 	if (newPacket->packetID == 0x02)
 	{
@@ -76,8 +161,7 @@ void ConnectToServer(Player& player, const std::string& nickname, const std::str
 	{
 		std::cout << player.generalInfo.nickname << ": Received wrong packet: "  << std::hex << newPacket->packetID << std::dec <<
 			"! Login success(0x2) was expected " << std::endl;
-		player.connection.connectionState = Disconnected;
-		player.connection.tcpconnection.CloseConnection();
+		DisconnectFromServer(player);
 		return;
 	}
 }

@@ -4,19 +4,24 @@
 
 int main()
 {
-	std::cout.sync_with_stdio(false);
+	//std::cout.sync_with_stdio(false);
 
-	std::string nickname("BOT");
+	Player player;
+	std::string nickname("Bot");
 	std::string ip("127.0.0.1");
 	std::string port("25565");
-	Player* player = ConnectToServer(ip, port, nickname);
-	clock_t lastPosChangeTime = clock();
-	for (int i = 0; i < 1600 && player->connection.connectionState == Play; i++)
+	for (int j = 0; j < 50; j++)
 	{
-		HandleGame(player);
+		ConnectToServer(player, nickname, ip, port);
+		for (int i = 0; i < 4000 && player.connection.connectionState == Play; i++)
+		{
+			RecvAndDispatchGamePacket(player);
+		}
+		if (player.connection.connectionState != Disconnected)
+			DisconnectFromServer(player);
+		delete[] player.connection.receivingBuffer;
+		player.connection.receivingBuffer = nullptr;
+		player.connection.compressionThreshold = -1;
 	}
-	DisconnectFromServer(player);
-	delete player;
-
 	return 1337;
 }
