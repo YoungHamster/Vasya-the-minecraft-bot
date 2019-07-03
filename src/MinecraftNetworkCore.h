@@ -4,69 +4,71 @@
 
 #include "MinecraftNetworkDataTypes.h"
 
-#define RECVBUFSIZE 2097152
-#define TICK_TIME_IN_MILLISECONDS 50
-
-//#define LOG_PACKETS_HEADERS
-#define LOG_PACKETS_DATA
-
-struct PacketHeader // without compression
+struct PlayerPosAndLook
 {
-	Minecraft_Int length; //Length of packet data + length of the packet ID
-	Minecraft_Int ID;
-	int dataOffset;
+	Minecraft_Double x = 9999999999.0L;
+	Minecraft_Double y;
+	Minecraft_Double z;
+	Minecraft_Float yaw;
+	Minecraft_Float pitch;
 };
 
-struct CompressedPacket
+struct PlayerGeneralInfo
 {
-	Minecraft_Int packLen; // Length of Data Length + compressed length of(Packet ID + Data)
-	Minecraft_Int dataLen; // Length of uncompressed (Packet ID + Data) or 0
-	Minecraft_Int ID;
-	DataBuffer data;
-	~CompressedPacket();
+	std::string nickname;
+	Minecraft_UUID uuid;
 };
 
-Player* ConnectToServer(std::string ip, std::string& port, std::string nickname);
-void DisconnectFromServer(Player* player);
+struct PlayerGameplayInfo
+{
+	Minecraft_Int entityID;
+	Minecraft_UnsignedByte gamemode;
+	World world;
+	std::vector<Mob> mobs;
+	Minecraft_Int dimension;
+	PlayerPosAndLook positionAndLook;
+	Minecraft_Float health;
+	Minecraft_Int food;
+	Minecraft_Float foodSaturation;
+};
 
+struct ServerInfo
+{
+	Minecraft_UnsignedByte difficulty;
+	Minecraft_UnsignedByte maxPlayers;
+	std::string levelType;
+	std::vector <PlayerInfo> playersInfo;
+};
 
-/* Use this functions only while connection is in Play state*/
-void ProcessIncomingPacket(Player* player);
-void HandleGame(Player* player);
+struct Player
+{
+	PlayerGeneralInfo generalInfo;
+	PlayerGameplayInfo gameplayInfo;
+	ServerInfo serverInfo;
 
-/* IMPORTANT: packet, that all this functions get as an argument is a packet,
-	that was previously received from server and parsed by ParseCompressedPacketHeaderAndUncompressPacket*/
-/* Clientbound */
-void PlayerInfoPacket(Player* player, CompressedPacket* packet);
-void KeepAlivePacket(Player* player, CompressedPacket* packet);
-void ChunkDataPacket(Player* player, CompressedPacket* packet);
-void DisconnectPlayPacket(Player* player, CompressedPacket* packet);
-void UpdateHealthPacket(Player* player, CompressedPacket* packet);
-void EntityPropertiesPacket(Player* player, CompressedPacket* packet);
-void PlayerPositionAndLookPacket(Player* player, CompressedPacket* packet);
-void JoinGamePacket(Player* player, CompressedPacket* packet);
-void SpawnPositionPacket(Player* player, CompressedPacket* packet);
-void PluginMessagePacket(Player* player, CompressedPacket* packet);
-void CombatEventPacket(Player* player, CompressedPacket* packet);
-void SpawnMobPacket(Player* player, CompressedPacket* packet);
-void StatisticsPacket(Player* player, CompressedPacket* packet);
-void DestroyEntitiesPacket(Player* player, CompressedPacket* packet);
-void ChangeGameStatePacket(Player* player, CompressedPacket* packet);
+	clock_t lastTimeSentPosition;
+	bool spawned = false;
 
-/* Serverbound */
-// Client status packet with action id 0
-void SendRespawnPacket(Player* player);
-void SendClientSettingsPacket(Player* player);
-void SendPlayerPacket(Player* player);
-void SendPlayerPositionAndLookPacket(Player* player);
-void SendPlayerPositionPacket(Player* player);
-void SendPlayerLookPacket(Player* player);
-// Client status packet with action id 1
-void SendClientRequesStatsPacket(Player* player);
+	Connection connection;
+};
 
-void SendCompressedGamePacket(DataBuffer& data, TCPClient& connection, int compressionThreshold);
-void SendUncompressedGamePacket(DataBuffer& data, TCPClient& connection);
+struct GamePacket
+{
+	Minecraft_Int packetDataSize;/* if packet is uncompressed it's equal to packet length,
+									if packet is compressed it's equal to size of uncompressed data
+									(if packet was compressed it's data length,
+									if it wasn't then it's (packet length - size of data length field) */
+	Minecraft_Int packetID;
+	DataBuffer data;/* packet id(that is already written to packetID) and actual data */
+};
 
-/* Return size of written data */
-int WritePacketLenght(char* packet, Minecraft_Int packetLenght);
-CompressedPacket* ParseCompressedPacketHeaderAndUncompressPacket(char* packet);
+void ConnectToServer(Player& player, const std::string& nickname, const std::string& ip, const std::string& port);
+void DisconnectFromServer(Player& player);
+
+void SendGamePacket(DataBuffer& data, const TCPClient& tcpconnection, int compressionThreshold);
+GamePacket* ParseGamePacket(char* packet, int compressionThreshold);
+
+void SendCompressedGamePacket(DataBuffer& data, const TCPClient& tcpconnection, int compressionThreshold);
+void SendUncompressedGamePacket(DataBuffer& data, const TCPClient& tcpconnection);
+GamePacket* ParseCompressedGamePacketHeader(char* packet, int compressionThreshold);
+GamePacket* ParseUncompressedGamePacketHeader(char* packet);
