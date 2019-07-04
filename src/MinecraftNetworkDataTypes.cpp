@@ -118,10 +118,12 @@ void ConvertStringToMinecraftString(std::string& str, int N)
 	memcpy(const_cast<char*>(str.data()), strSize.bytes, strSize.sizeOfUsedBytes);
 }
 
-std::string DecodeMinecraftString(const char* minecraftString, int* sizeOfCodedString)
+std::string DecodeMinecraftString(const char* minecraftString, int N, int* sizeOfCodedString)
 {
 	int sizeOfUsedBytes;
 	Minecraft_Int stringSize = DecodeVarInt(minecraftString, &sizeOfUsedBytes);
+	if (stringSize > N)
+		__debugbreak();
 	if (sizeOfCodedString != nullptr) * sizeOfCodedString = sizeOfUsedBytes + stringSize;
 	return std::string(&minecraftString[sizeOfUsedBytes], stringSize);
 }
@@ -232,11 +234,11 @@ Minecraft_Long DataBuffer::ReadVarLong()
 	return returnValue;
 }
 
-std::string DataBuffer::ReadMinecraftString()
+std::string DataBuffer::ReadMinecraftString(int maxStringSize)
 {
 	if (buffer == nullptr || offset >= bufferSize || offset < 0) __debugbreak();
 	int additonalOffset;
-	std::string returnValue = DecodeMinecraftString(&buffer[offset], &additonalOffset);
+	std::string returnValue = DecodeMinecraftString(&buffer[offset], maxStringSize, &additonalOffset);
 	offset += additonalOffset;
 	return returnValue;
 }

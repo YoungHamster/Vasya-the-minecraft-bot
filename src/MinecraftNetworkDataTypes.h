@@ -133,7 +133,8 @@ Minecraft_VarLong CodeVarLong(Minecraft_Long value, void* PlaceToWrite = nullptr
 
 /* N is maximum number of characters in string defined by minecraft official documentation */
 void ConvertStringToMinecraftString(std::string& str, int N);
-std::string DecodeMinecraftString(const char* minecraftString, int* sizeOfCodedString = nullptr);
+/* N is maximum number of characters in string defined by minecraft official documentation */
+std::string DecodeMinecraftString(const char* minecraftString, int N, int* sizeOfCodedString = nullptr);
 
 void bitShiftRightVarInt(Minecraft_VarInt* value, int shift);
 void bitShiftRightVarLong(Minecraft_VarLong* value, int shift);
@@ -157,7 +158,7 @@ public:
 	Minecraft_Int ReadVarInt();
 	Minecraft_Long ReadLong();
 	Minecraft_Long ReadVarLong();
-	std::string ReadMinecraftString();
+	std::string ReadMinecraftString(int maxStringSize);
 	Minecraft_Byte ReadByte();
 	Minecraft_UnsignedByte ReadUnsignedByte();
 	Minecraft_Short ReadShort();
@@ -188,14 +189,17 @@ public:
 	This is complex data types, containing simple data types in them
 */
 
+#define MAX_PACKET_SIZE 1000000
+
 struct Connection
 {
 	TCPClient tcpconnection;
-	Address addr;
 	Minecraft_Int protocolVersion;
 	std::string serverAddress;/* String (255)	Hostname or IP, e.g. localhost or 127.0.0.1, that was used to connect.
 									The Notchian server does not use this information. */
 	Minecraft_UnsignedShort serverPort = 25565;
+
+	char* receivingBuffer = nullptr;
 
 	ConnectionStates connectionState = Disconnected;
 	int compressionThreshold = -1;
@@ -218,52 +222,3 @@ struct Mob
 	// There should also be entity metadata, but it's hard to parse, and i'll do it later
 };
 
-struct PlayerPosAndLook
-{
-	Minecraft_Double x = 9999999999.0L;
-	Minecraft_Double y;
-	Minecraft_Double z;
-	Minecraft_Float yaw;
-	Minecraft_Float pitch;
-};
-
-struct PlayerGeneralInfo
-{
-	std::string nickname;
-	Minecraft_UUID uuid;
-};
-
-struct PlayerGameplayInfo
-{
-	Minecraft_Int entityID;
-	Minecraft_UnsignedByte gamemode;
-	World world;
-	std::vector<Mob> mobs;
-	Minecraft_Int dimension;
-	PlayerPosAndLook positionAndLook;
-	Minecraft_Float health;
-	Minecraft_Int food;
-	Minecraft_Float foodSaturation;
-};
-
-struct ServerInfo
-{
-	Minecraft_UnsignedByte difficulty;
-	Minecraft_UnsignedByte maxPlayers;
-	std::string levelType;
-	std::vector <PlayerInfo> playersInfo;
-};
-
-struct Player
-{
-	PlayerGeneralInfo generalInfo;
-	PlayerGameplayInfo gameplayInfo;
-	ServerInfo serverInfo;
-
-	clock_t lastTimeSentPosition;
-	int statisticsCounter = 0;
-	bool spawned = false;
-
-	Connection connection;
-	~Player();
-};
