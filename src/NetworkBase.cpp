@@ -85,21 +85,23 @@ int TCPClient::SendData(const char* data, int dataSize) const
 {
 #ifndef LOG_RECV_SEND
 	return send(sock, data, dataSize, NULL);
-#endif
+#else
 	int size = send(sock, data, dataSize, NULL);
 	std::cout << "Sent " << size << " bytes." << std::endl;
 	return size;
+#endif
 }
 
 int TCPClient::RecvData(char* buf, int bufSize) const
 {
 #ifndef LOG_RECV_SEND
 	return recv(sock, buf, bufSize, NULL);
-#endif
+#else
 	int size = recv(sock, buf, bufSize, NULL);
 	if (size <= 0) __debugbreak();
 	std::cout << "Received " << size << " bytes." << std::endl;
 	return size;
+#endif
 }
 
 void TCPClient::CloseConnection()

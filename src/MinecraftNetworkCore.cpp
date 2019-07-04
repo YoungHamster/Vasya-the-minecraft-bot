@@ -8,9 +8,8 @@ void RecvAndDispatchGamePacket(Player& player)
 		DisconnectFromServer(player);
 		return;
 	}
-	memset(player.connection.receivingBuffer, 0, MAX_PACKET_SIZE);
 	int recvSize = player.connection.tcpconnection.RecvData(player.connection.receivingBuffer, MAX_PACKET_SIZE);
-	if (recvSize <= 0)
+	if (recvSize <= 0 || recvSize == MAX_PACKET_SIZE) // read MAX_PACKET_SIZE comments
 	{
 		DisconnectFromServer(player);
 		return;
@@ -80,16 +79,16 @@ void PlayerPositionAndLookPacket(Player& player, GamePacket* packet)
 void ConnectToServer(Player& player, const std::string& nickname, const std::string& ip, const std::string& port)
 {
 	player.generalInfo.nickname = nickname;
-	if (!player.connection.tcpconnection.ConnectToServer(ip, port))
-	{
-		player.connection.connectionState = Disconnected;
-		return;
-	}
 	if (player.connection.receivingBuffer != nullptr)
 	{
 		delete[] player.connection.receivingBuffer;
 	}
 	player.connection.receivingBuffer = new char[MAX_PACKET_SIZE];
+	if (!player.connection.tcpconnection.ConnectToServer(ip, port))
+	{
+		player.connection.connectionState = Disconnected;
+		return;
+	}
 
 	DataBuffer sendBuffer;
 	// Send handshake packet
@@ -111,7 +110,6 @@ void ConnectToServer(Player& player, const std::string& nickname, const std::str
 
 	SendGamePacket(sendBuffer, player.connection.tcpconnection, player.connection.compressionThreshold);
 
-	memset(player.connection.receivingBuffer, 0, MAX_PACKET_SIZE);
 	int recvSize = player.connection.tcpconnection.RecvData(player.connection.receivingBuffer, MAX_PACKET_SIZE);
 	if (recvSize <= 0)
 	{
@@ -139,7 +137,6 @@ void ConnectToServer(Player& player, const std::string& nickname, const std::str
 	}
 	delete newPacket;
 
-	memset(player.connection.receivingBuffer, 0, recvSize);
 	recvSize = player.connection.tcpconnection.RecvData(player.connection.receivingBuffer, MAX_PACKET_SIZE);
 	if (recvSize <= 0)
 	{

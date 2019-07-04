@@ -158,7 +158,8 @@ public:
 	Minecraft_Int ReadVarInt();
 	Minecraft_Long ReadLong();
 	Minecraft_Long ReadVarLong();
-	std::string ReadMinecraftString(int maxStringSize);
+	/* N is maximum number of characters in string defined by minecraft official documentation */
+	std::string ReadMinecraftString(int N);
 	Minecraft_Byte ReadByte();
 	Minecraft_UnsignedByte ReadUnsignedByte();
 	Minecraft_Short ReadShort();
@@ -189,14 +190,15 @@ public:
 	This is complex data types, containing simple data types in them
 */
 
-#define MAX_PACKET_SIZE 1000000
+#define MAX_PACKET_SIZE 2097153 /* max packet size is 2097152, 
+								   number is bigger to easily detect too big packets and disconnect from serverts, that send them */
 
 struct Connection
 {
 	TCPClient tcpconnection;
 	Minecraft_Int protocolVersion;
 	std::string serverAddress;/* String (255)	Hostname or IP, e.g. localhost or 127.0.0.1, that was used to connect.
-									The Notchian server does not use this information. */
+								 The Notchian server does not use this information. */
 	Minecraft_UnsignedShort serverPort = 25565;
 
 	char* receivingBuffer = nullptr;

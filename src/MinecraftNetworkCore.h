@@ -4,7 +4,7 @@
 
 #include "MinecraftNetworkDataTypes.h"
 
-#define LOG_PACKETS_INFO
+//#define LOG_PACKETS_INFO
 
 struct PlayerPosAndLook
 {

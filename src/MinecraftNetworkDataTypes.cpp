@@ -234,11 +234,11 @@ Minecraft_Long DataBuffer::ReadVarLong()
 	return returnValue;
 }
 
-std::string DataBuffer::ReadMinecraftString(int maxStringSize)
+std::string DataBuffer::ReadMinecraftString(int N)
 {
 	if (buffer == nullptr || offset >= bufferSize || offset < 0) __debugbreak();
 	int additonalOffset;
-	std::string returnValue = DecodeMinecraftString(&buffer[offset], maxStringSize, &additonalOffset);
+	std::string returnValue = DecodeMinecraftString(&buffer[offset], N, &additonalOffset);
 	offset += additonalOffset;
 	return returnValue;
 }
@@ -375,7 +375,7 @@ void DataBuffer::WriteUnsignedShort(Minecraft_UnsignedShort value)
 
 void DataBuffer::WriteArrayOfBytes(char* bytes, int arraySize)
 {
-	if (buffer == nullptr || offset >= bufferSize || offset < 0 || arraySize + offset > bufferSize || arraySize < 0) __debugbreak();
+	if (buffer == nullptr || offset >= bufferSize || offset < 0 || arraySize + offset > bufferSize || arraySize <= 0) __debugbreak();
 	memcpy(&buffer[offset], bytes, arraySize);
 	offset += arraySize;
 }
