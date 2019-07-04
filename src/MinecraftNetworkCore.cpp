@@ -152,15 +152,14 @@ void ConnectToServer(Player& player, const std::string& nickname, const std::str
 		player.generalInfo.nickname = newPacket->data.ReadMinecraftString(16);
 		std::cout << player.generalInfo.nickname << ": Login success! UUID: " << uuid << ", nickname: " << player.generalInfo.nickname << std::endl;
 		player.connection.connectionState = Play;
-		return;
 	}
 	else
 	{
 		std::cout << player.generalInfo.nickname << ": Received wrong packet: "  << std::hex << newPacket->packetID << std::dec <<
 			"! Login success(0x2) was expected " << std::endl;
 		DisconnectFromServer(player);
-		return;
 	}
+	delete newPacket;
 }
 
 void DisconnectFromServer(Player& player)
@@ -204,15 +203,15 @@ GamePacket* ParseGamePacket(char* packet, int compressionThreshold)
 void SendCompressedGamePacket(DataBuffer& data, const TCPClient& tcpconnection, int compressionThreshold)
 {
 	DataBuffer packet;
-	packet.AllocateBuffer(data.GetOffset() + 10);
+	packet.AllocateBuffer(data.GetOffset() + 10 + 10);
 	if(data.GetOffset() > compressionThreshold)
 	{
 		Minecraft_VarInt dataLength = CodeVarInt(data.GetOffset());
-		Bytef* compressedData = new Bytef[data.GetOffset()];
-		uLongf compressedDataLen = (uLongf)data.GetOffset();
+		Bytef* compressedData = new Bytef[data.GetOffset() + 10]; // in some cases compressedData may be bigger, than source data
+		uLongf compressedDataLen = (uLongf)data.GetOffset() + 10;
 		int res = compress(compressedData, &compressedDataLen, (const Bytef*)data.GetBuffer(), data.GetOffset());
 		if (res != Z_OK)
-			__debugbreak();
+			__debugbreak();// std::cout << "compress function returned with error code: " << res << std::endl;
 		packet.WriteVarInt((Minecraft_Int)compressedDataLen + dataLength.sizeOfUsedBytes);
 		packet.WriteVarInt(data.GetOffset());
 		packet.WriteArrayOfBytes((char*)compressedData, (int)compressedDataLen);

@@ -98,7 +98,6 @@ int TCPClient::RecvData(char* buf, int bufSize) const
 	return recv(sock, buf, bufSize, NULL);
 #else
 	int size = recv(sock, buf, bufSize, NULL);
-	if (size <= 0) __debugbreak();
 	std::cout << "Received " << size << " bytes." << std::endl;
 	return size;
 #endif

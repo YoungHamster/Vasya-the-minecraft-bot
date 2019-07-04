@@ -10,8 +10,8 @@ int main()
 	std::string nickname("Bot");
 	std::string ip("127.0.0.1");
 	std::string port("25565");
-	bool success[200];
-	for (int j = 0; j < 200; j++)
+	bool success[100];
+	for (int j = 0; j < 100; j++)
 	{
 		success[j] = false;
 		ConnectToServer(player, nickname, ip, port);
@@ -34,11 +34,11 @@ int main()
 		player.connection.compressionThreshold = -1;
 	}
 	int successCount = 0;
-	for (int i = 0; i < 200; i++)
+	for (int i = 0; i < 100; i++)
 	{
 		if (success[i])
 			successCount += 1;
 	}
-	std::cout << "Success rate = " << (200.0f / (float)successCount) * 100 << ", successCount = " << successCount << std::endl;
+	std::cout << "Success rate = " << ((float)successCount / 100.0f) * 100 << ", successCount = " << successCount << std::endl;
 	return 1337;
 }
