@@ -1,23 +1,53 @@
 #include "MinecraftNetworkCore.h"
 
-void RecvAndDispatchGamePacket(Player& player)
+void HandlePlayer(Player& player)
 {
-	if (player.connection.connectionState != Play)
+	DispatchGamePacket(player);
+	if ((clock() - player.lastTimeSentPosition) >= (50 * 20))
 	{
-		std::cout << player.generalInfo.nickname << ": Critical error! Called RecvAndDispatchGamePacket function for player with wrong connection state!" << std::endl;
-		DisconnectFromServer(player);
+		player.lastTimeSentPosition = clock();
+		SendPlayerPosition(player);
+	}
+}
+
+void MovePlayer(Player& player, Minecraft_Double dx, Minecraft_Double dy, Minecraft_Double dz)
+{
+	player.gameplayInfo.positionAndLook.x += dx;
+	player.gameplayInfo.positionAndLook.y += dy;
+	player.gameplayInfo.positionAndLook.z += dz;
+	player.lastTimeSentPosition = clock();
+	SendPlayerPosition(player);
+}
+
+
+
+void RecvGamePacket(Player* player)
+{
+	while (player->connection.connectionState == Play)
+	{
+		int recvSize = player->connection.tcpconnection.RecvData(player->connection.receivingBuffer, MAX_PACKET_SIZE);
+		if (recvSize <= 0 || recvSize == MAX_PACKET_SIZE) // read MAX_PACKET_SIZE comments
+		{
+			DisconnectFromServer(*player);
+			return;
+		}
+		GamePacket* packet = ParseGamePacket(player->connection.receivingBuffer, player->connection.compressionThreshold);
+		player->connection.packetQueue.Queue(packet);
+	}
+}
+
+void DispatchGamePacket(Player& player)
+{
+	GamePacket* packet = player.connection.packetQueue.Dequeue();
+	if (packet == nullptr)
+	{
+		Sleep(1);
 		return;
 	}
-	int recvSize = player.connection.tcpconnection.RecvData(player.connection.receivingBuffer, MAX_PACKET_SIZE);
-	if (recvSize <= 0 || recvSize == MAX_PACKET_SIZE) // read MAX_PACKET_SIZE comments
-	{
-		DisconnectFromServer(player);
-		return;
-	}
-	GamePacket* packet = ParseGamePacket(player.connection.receivingBuffer, player.connection.compressionThreshold);
-	//std::cout << player.generalInfo.nickname << ": Received packet with id: 0x" << std::hex << packet->packetID << std::dec << std::endl;
+	//std::cout << std::hex << packet->packetID << std::dec << std::endl;
 	switch (packet->packetID)
 	{
+	case 0x21: KeepAlivePacket(player, packet); break;
 	case 0x25: JoinGamePacket(player, packet); break;
 	case 0x32: PlayerPositionAndLookPacket(player, packet); break;
 	}
@@ -46,14 +76,6 @@ void JoinGamePacket(Player& player, GamePacket* packet)
 
 void PlayerPositionAndLookPacket(Player& player, GamePacket* packet)
 {
-	player.connection.connectionState = Login;
-
-
-
-
-
-
-
 	player.gameplayInfo.positionAndLook.x = packet->data.ReadDouble();
 	player.gameplayInfo.positionAndLook.y = packet->data.ReadDouble();
 	player.gameplayInfo.positionAndLook.z = packet->data.ReadDouble();
@@ -68,12 +90,62 @@ void PlayerPositionAndLookPacket(Player& player, GamePacket* packet)
 		<< ", " << player.gameplayInfo.positionAndLook.y << ", " << player.gameplayInfo.positionAndLook.z << "), (" << player.gameplayInfo.positionAndLook.yaw
 		<< ", " << player.gameplayInfo.positionAndLook.pitch << ")" << std::endl;
 #endif
-	// teleport confirm
-	DataBuffer teleportConfirm;
-	teleportConfirm.AllocateBuffer(10);
-	teleportConfirm.WriteVarInt(0x00);
-	teleportConfirm.WriteVarInt(teleportID);
-	SendGamePacket(teleportConfirm, player.connection.tcpconnection, player.connection.compressionThreshold);
+	{
+		// teleport confirm
+		DataBuffer teleportConfirm;
+		teleportConfirm.AllocateBuffer(10);
+		teleportConfirm.WriteVarInt(0x00);
+		teleportConfirm.WriteVarInt(teleportID);
+		SendGamePacket(teleportConfirm, player.connection.tcpconnection, player.connection.compressionThreshold);
+	}
+	SendPlayerPositionAndLook(player);
+}
+
+void KeepAlivePacket(Player& player, GamePacket* packet)
+{
+#ifdef LOG_PACKETS_INFO
+	std::cout << player.generalInfo.nickname << ": Keeping alive!" << std::endl;
+#endif
+	DataBuffer respone;
+	respone.AllocateBuffer(5 + 8);
+	respone.WriteVarInt(0x0E);
+	respone.WriteLong(packet->data.ReadLong());
+	SendGamePacket(respone, player.connection.tcpconnection, player.connection.compressionThreshold);
+}
+
+void SendPlayerPosition(Player& player)
+{
+#ifdef LOG_PACKETS_INFO
+	std::cout << player.generalInfo.nickname << ": Sending player position: (" <<
+		player.gameplayInfo.positionAndLook.x << ", " << player.gameplayInfo.positionAndLook.y << ", " << player.gameplayInfo.positionAndLook.z << ")" << std::endl;
+#endif
+	DataBuffer packet;
+	packet.AllocateBuffer(5 + sizeof(Minecraft_Double) * 3 + 1);
+	packet.WriteVarInt(0x10);
+	packet.WriteDouble(player.gameplayInfo.positionAndLook.x);
+	packet.WriteDouble(player.gameplayInfo.positionAndLook.y);
+	packet.WriteDouble(player.gameplayInfo.positionAndLook.z);
+	packet.WriteBool(true); // on ground parameter. Seems like vanilla server doesn't check this since it was created and until this days
+	SendGamePacket(packet, player.connection.tcpconnection, player.connection.compressionThreshold);
+}
+
+void SendPlayerPositionAndLook(Player& player)
+{
+#ifdef LOG_PACKETS_INFO
+	std::cout << player.generalInfo.nickname << ": Sending player position and look: (" <<
+		player.gameplayInfo.positionAndLook.x << ", " << player.gameplayInfo.positionAndLook.y << ", " << player.gameplayInfo.positionAndLook.z << ") (" <<
+		player.gameplayInfo.positionAndLook.yaw << ", " << player.gameplayInfo.positionAndLook.pitch << ")" << std::endl;
+#endif
+	DataBuffer packet;
+	packet.AllocateBuffer(5 + sizeof(Minecraft_Double) * 3 + sizeof(Minecraft_Float) * 2 + 1);
+	packet.WriteVarInt(0x11);
+	packet.WriteDouble(player.gameplayInfo.positionAndLook.x);
+	packet.WriteDouble(player.gameplayInfo.positionAndLook.y);
+	packet.WriteDouble(player.gameplayInfo.positionAndLook.z);
+	packet.WriteFloat(player.gameplayInfo.positionAndLook.yaw);
+	packet.WriteFloat(player.gameplayInfo.positionAndLook.pitch);
+	packet.WriteBool(true); // on ground parameter. Seems like vanilla server doesn't check this since it was created and until this days
+	SendGamePacket(packet, player.connection.tcpconnection, player.connection.compressionThreshold);
 }
 
 void ConnectToServer(Player& player, const std::string& nickname, const std::string& ip, const std::string& port)

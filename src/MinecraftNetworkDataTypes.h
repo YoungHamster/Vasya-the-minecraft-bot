@@ -5,6 +5,8 @@
 #include <chrono>
 #include <intrin.h>
 #include <vector>
+#include <queue>
+#include <mutex>
 
 //#include <nbt.h>
 
@@ -66,7 +68,6 @@ struct UnpackedPosition
 	Minecraft_Int z;
 };
 
-#define BLOCK_OR_SKY_LIGHT_SIZE 2048
 struct ChunkSection
 {
 	Minecraft_UnsignedByte bitsPerBlock; /*For bits per block <= 4, 4 bits are used to represent a block.
@@ -131,13 +132,17 @@ Minecraft_Long DecodeVarLong(const char* input, int* sizeOfUsedBytes = nullptr);
 Minecraft_VarInt CodeVarInt(Minecraft_Int value, void* PlaceToWrite = nullptr);
 Minecraft_VarLong CodeVarLong(Minecraft_Long value, void* PlaceToWrite = nullptr);
 
-/* N is maximum number of characters in string defined by minecraft official documentation */
+/* N is maximum number of characters in string defined by protocol documentation */
 void ConvertStringToMinecraftString(std::string& str, int N);
-/* N is maximum number of characters in string defined by minecraft official documentation */
+/* N is maximum number of characters in string defined by protocol documentation */
 std::string DecodeMinecraftString(const char* minecraftString, int N, int* sizeOfCodedString = nullptr);
 
 void bitShiftRightVarInt(Minecraft_VarInt* value, int shift);
 void bitShiftRightVarLong(Minecraft_VarLong* value, int shift);
+
+/*
+	This is complex data types, containing simple data types in them
+*/
 
 class DataBuffer
 {
@@ -158,7 +163,7 @@ public:
 	Minecraft_Int ReadVarInt();
 	Minecraft_Long ReadLong();
 	Minecraft_Long ReadVarLong();
-	/* N is maximum number of characters in string defined by minecraft official documentation */
+	/* N is maximum number of characters in string defined by protocol documentation */
 	std::string ReadMinecraftString(int N);
 	Minecraft_Byte ReadByte();
 	Minecraft_UnsignedByte ReadUnsignedByte();
@@ -173,7 +178,7 @@ public:
 	void WriteVarInt(Minecraft_Int value);
 	void WriteLong(Minecraft_Long value);
 	void WriteVarLong(Minecraft_Long value);
-	/* N is maximum number of characters in string defined by minecraft official documentation */
+	/* N is maximum number of characters in string defined by protocol documentation */
 	void WriteMinecraftString(std::string value, int N);
 	void WriteByte(Minecraft_Byte value);
 	void WriteUnsignedByte(Minecraft_UnsignedByte value);
@@ -186,12 +191,25 @@ public:
 	char* GetBuffer();
 };
 
-/*
-	This is complex data types, containing simple data types in them
-*/
+struct GamePacket
+{
+	Minecraft_Int packetDataSize;/* if packet is uncompressed it's equal to packet length,
+									if packet is compressed it's equal to size of uncompressed data
+									(if packet was compressed it's data length,
+									if it wasn't then it's (packet length - size of data length field) */
+	Minecraft_Int packetID;
+	DataBuffer data;/* packet id(that is already written to packetID) and actual data */
+};
 
-#define MAX_PACKET_SIZE 2097153 /* max packet size is 2097152, 
-								   number is bigger to easily detect too big packets and disconnect from serverts, that send them */
+class AsyncGamePacketQueue
+{
+private:
+	std::mutex mutex;
+	std::queue<GamePacket*> gamePacketsQueue;
+public:
+	void Queue(GamePacket* newPacket);
+	GamePacket* Dequeue();
+};
 
 struct Connection
 {
@@ -202,6 +220,8 @@ struct Connection
 	Minecraft_UnsignedShort serverPort = 25565;
 
 	char* receivingBuffer = nullptr;
+	AsyncGamePacketQueue packetQueue;
+
 
 	ConnectionStates connectionState = Disconnected;
 	int compressionThreshold = -1;
@@ -224,3 +244,50 @@ struct Mob
 	// There should also be entity metadata, but it's hard to parse, and i'll do it later
 };
 
+struct PlayerPosAndLook
+{
+	Minecraft_Double x = 9999999999.0L;
+	Minecraft_Double y;
+	Minecraft_Double z;
+	Minecraft_Float yaw;
+	Minecraft_Float pitch;
+};
+
+struct PlayerGeneralInfo
+{
+	std::string nickname;
+	Minecraft_UUID uuid;
+};
+
+struct PlayerGameplayInfo
+{
+	Minecraft_Int entityID;
+	Minecraft_UnsignedByte gamemode;
+	World world;
+	std::vector<Mob> mobs;
+	Minecraft_Int dimension;
+	PlayerPosAndLook positionAndLook;
+	Minecraft_Float health;
+	Minecraft_Int food;
+	Minecraft_Float foodSaturation;
+};
+
+struct ServerInfo
+{
+	Minecraft_UnsignedByte difficulty;
+	Minecraft_UnsignedByte maxPlayers;
+	std::string levelType;
+	std::vector <PlayerInfo> playersInfo;
+};
+
+struct Player
+{
+	PlayerGeneralInfo generalInfo;
+	PlayerGameplayInfo gameplayInfo;
+	ServerInfo serverInfo;
+
+	clock_t lastTimeSentPosition = 0;
+	bool spawned = false;
+
+	Connection connection;
+};

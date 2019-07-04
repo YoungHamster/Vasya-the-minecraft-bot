@@ -5,76 +5,31 @@
 #include "MinecraftNetworkDataTypes.h"
 
 #define LOG_PACKETS_INFO
+#define LOG_GAMEPLAY_INFO
 
-struct PlayerPosAndLook
-{
-	Minecraft_Double x = 9999999999.0L;
-	Minecraft_Double y;
-	Minecraft_Double z;
-	Minecraft_Float yaw;
-	Minecraft_Float pitch;
-};
+void HandlePlayer(Player& player);
 
-struct PlayerGeneralInfo
-{
-	std::string nickname;
-	Minecraft_UUID uuid;
-};
+/* Gameplay functions */
+void MovePlayer(Player& player, Minecraft_Double dx, Minecraft_Double dy, Minecraft_Double dz);
 
-struct PlayerGameplayInfo
-{
-	Minecraft_Int entityID;
-	Minecraft_UnsignedByte gamemode;
-	World world;
-	std::vector<Mob> mobs;
-	Minecraft_Int dimension;
-	PlayerPosAndLook positionAndLook;
-	Minecraft_Float health;
-	Minecraft_Int food;
-	Minecraft_Float foodSaturation;
-};
+void RecvGamePacket(Player* player);
+void DispatchGamePacket(Player& player);
 
-struct ServerInfo
-{
-	Minecraft_UnsignedByte difficulty;
-	Minecraft_UnsignedByte maxPlayers;
-	std::string levelType;
-	std::vector <PlayerInfo> playersInfo;
-};
-
-struct Player
-{
-	PlayerGeneralInfo generalInfo;
-	PlayerGameplayInfo gameplayInfo;
-	ServerInfo serverInfo;
-
-	clock_t lastTimeSentPosition;
-	bool spawned = false;
-
-	Connection connection;
-};
-
-struct GamePacket
-{
-	Minecraft_Int packetDataSize;/* if packet is uncompressed it's equal to packet length,
-									if packet is compressed it's equal to size of uncompressed data
-									(if packet was compressed it's data length,
-									if it wasn't then it's (packet length - size of data length field) */
-	Minecraft_Int packetID;
-	DataBuffer data;/* packet id(that is already written to packetID) and actual data */
-};
-
-void RecvAndDispatchGamePacket(Player& player);
-
-/* Clientbound packets*/
-void JoinGamePacket(Player& player, GamePacket* packet); // 0x25 in protocol 404
-void PlayerPositionAndLookPacket(Player& player, GamePacket* packet); // 0x32 in protocol 404
-
+/* Basic functions */
 void ConnectToServer(Player& player, const std::string& nickname, const std::string& ip, const std::string& port);
 void DisconnectFromServer(Player& player);
 
 void SendGamePacket(DataBuffer& data, const TCPClient& tcpconnection, int compressionThreshold);
 GamePacket* ParseGamePacket(char* packet, int compressionThreshold);
+
+/* Clientbound packets*/
+void JoinGamePacket(Player& player, GamePacket* packet); // 0x25 in protocol 404
+void PlayerPositionAndLookPacket(Player& player, GamePacket* packet); // 0x32 in protocol 404
+void KeepAlivePacket(Player& player, GamePacket* packet); // 0x21 in protocol 404
+
+/* Serverbound packets */
+void SendPlayerPosition(Player& player); // 0x10 in protcol 404
+void SendPlayerPositionAndLook(Player& player); // 0x11 in protcol 404
 
 void SendCompressedGamePacket(DataBuffer& data, const TCPClient& tcpconnection, int compressionThreshold);
 void SendUncompressedGamePacket(DataBuffer& data, const TCPClient& tcpconnection);

@@ -419,3 +419,23 @@ World::~World()
 		delete chunks[i];
 	}
 }
+
+void AsyncGamePacketQueue::Queue(GamePacket* newPacket)
+{
+	mutex.lock();
+	gamePacketsQueue.push(newPacket);
+	mutex.unlock();
+}
+
+GamePacket* AsyncGamePacketQueue::Dequeue()
+{
+	mutex.lock();
+	GamePacket* packet = nullptr;
+	if (gamePacketsQueue.size() > 0)
+	{
+		packet = gamePacketsQueue.front();
+		gamePacketsQueue.pop();
+	}
+	mutex.unlock();
+	return packet;
+}

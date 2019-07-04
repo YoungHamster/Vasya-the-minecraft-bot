@@ -34,3 +34,7 @@ enum EntityStatuses
 {
 
 };
+
+#define MAX_PACKET_SIZE 2097153 /* max packet size is 2097152, 
+								   number is bigger to easily detect too big packets and disconnect from serverts, that send them */
+#define BLOCK_OR_SKY_LIGHT_SIZE 2048
