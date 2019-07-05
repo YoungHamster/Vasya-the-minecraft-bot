@@ -3,11 +3,16 @@
 void HandlePlayer(Player& player)
 {
 	DispatchGamePacket(player);
-	if ((clock() - player.lastTimeSentPosition) >= (50 * 20))
+	if (player.spawned && player.serverInfo.serverTime.worldAge - player.lastTimeSentPosition >= 20)
+	{
+		SendPlayerPosition(player);
+		player.lastTimeSentPosition = player.serverInfo.serverTime.worldAge;
+	}
+	/*if ((clock() - player.lastTimeSentPosition) >= (50 * 15))
 	{
 		player.lastTimeSentPosition = clock();
-		SendPlayerPosition(player);
-	}
+		MovePlayer(player, 0.0, 0.1, 0.0);
+	}*/
 }
 
 void MovePlayer(Player& player, Minecraft_Double dx, Minecraft_Double dy, Minecraft_Double dz)
@@ -19,37 +24,50 @@ void MovePlayer(Player& player, Minecraft_Double dx, Minecraft_Double dy, Minecr
 	SendPlayerPosition(player);
 }
 
+void RespawnPlayer(Player& player)
+{
+#ifdef LOG_GAMEPLAY_INFO
+	std::cout << "[ GAMEPLAY INFO ]: " << player.generalInfo.nickname << ": Respawning!" << std::endl;
+#endif
+	SendClientStatus(player, 0);
+}
 
 
-void RecvGamePacket(Player* player)
+
+void RecvGamePackets(Player* player)
 {
 	while (player->connection.connectionState == Play)
 	{
 		int recvSize = player->connection.tcpconnection.RecvData(player->connection.receivingBuffer, MAX_PACKET_SIZE);
 		if (recvSize <= 0 || recvSize == MAX_PACKET_SIZE) // read MAX_PACKET_SIZE comments
 		{
-			DisconnectFromServer(*player);
+			player->connection.connectionState = Disconnected;
 			return;
 		}
-		GamePacket* packet = ParseGamePacket(player->connection.receivingBuffer, player->connection.compressionThreshold);
+		char* packet = new char[recvSize];
+		memcpy(packet, player->connection.receivingBuffer, recvSize);
 		player->connection.packetQueue.Queue(packet);
 	}
 }
 
 void DispatchGamePacket(Player& player)
 {
-	GamePacket* packet = player.connection.packetQueue.Dequeue();
-	if (packet == nullptr)
+	char* rawPacket = player.connection.packetQueue.Dequeue();
+	if (rawPacket == nullptr)
 	{
 		Sleep(1);
 		return;
 	}
+	GamePacket* packet = ParseGamePacket(rawPacket, player.connection.compressionThreshold);
+	delete[] rawPacket;
 	//std::cout << std::hex << packet->packetID << std::dec << std::endl;
 	switch (packet->packetID)
 	{
+	case 0x1B: DisconnectPacket(player, packet); break;
 	case 0x21: KeepAlivePacket(player, packet); break;
 	case 0x25: JoinGamePacket(player, packet); break;
 	case 0x32: PlayerPositionAndLookPacket(player, packet); break;
+	case 0x4A: TimeUpdatePacket(player, packet); break;
 	}
 	delete packet;
 }
@@ -64,13 +82,13 @@ void JoinGamePacket(Player& player, GamePacket* packet)
 	player.serverInfo.levelType = packet->data.ReadMinecraftString(16);
 	bool reducedDebugInfo = packet->data.ReadBool();
 #ifdef LOG_PACKETS_INFO
-	std::cout << player.generalInfo.nickname << ": my entity id is: " << player.gameplayInfo.entityID << std::endl;
-	std::cout << player.generalInfo.nickname << ": my gamemode is: " << (unsigned int)player.gameplayInfo.gamemode << std::endl;
-	std::cout << player.generalInfo.nickname << ": i'm in dimension: " << player.gameplayInfo.dimension << std::endl;
-	std::cout << player.generalInfo.nickname << ": server difficulty is: " << (unsigned int)player.serverInfo.difficulty << std::endl;
-	std::cout << player.generalInfo.nickname << ": server max player is: " << (unsigned int)player.serverInfo.maxPlayers << std::endl;
-	std::cout << player.generalInfo.nickname << ": server level type is: " << player.serverInfo.levelType << std::endl;
-	std::cout << player.generalInfo.nickname << ": server reduced debug info is: " << reducedDebugInfo << std::endl;
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": my entity id is: " << player.gameplayInfo.entityID << std::endl;
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": my gamemode is: " << (unsigned int)player.gameplayInfo.gamemode << std::endl;
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": i'm in dimension: " << player.gameplayInfo.dimension << std::endl;
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": server difficulty is: " << (unsigned int)player.serverInfo.difficulty << std::endl;
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": server max player is: " << (unsigned int)player.serverInfo.maxPlayers << std::endl;
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": server level type is: " << player.serverInfo.levelType << std::endl;
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": server reduced debug info is: " << reducedDebugInfo << std::endl;
 #endif
 }
 
@@ -86,7 +104,7 @@ void PlayerPositionAndLookPacket(Player& player, GamePacket* packet)
 		std::cout << player.generalInfo.nickname << ": Error! Received relative position or look, don't know how to handle it!" << std::endl;
 	Minecraft_Int teleportID = packet->data.ReadVarInt();
 #ifdef LOG_PACKETS_INFO
-	std::cout << player.generalInfo.nickname << ": Received Player postion and look! (" << player.gameplayInfo.positionAndLook.x
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": Received Player postion and look! (" << player.gameplayInfo.positionAndLook.x
 		<< ", " << player.gameplayInfo.positionAndLook.y << ", " << player.gameplayInfo.positionAndLook.z << "), (" << player.gameplayInfo.positionAndLook.yaw
 		<< ", " << player.gameplayInfo.positionAndLook.pitch << ")" << std::endl;
 #endif
@@ -99,12 +117,17 @@ void PlayerPositionAndLookPacket(Player& player, GamePacket* packet)
 		SendGamePacket(teleportConfirm, player.connection.tcpconnection, player.connection.compressionThreshold);
 	}
 	SendPlayerPositionAndLook(player);
+	if (!player.spawned)
+	{
+		player.spawned = true;
+		RespawnPlayer(player);
+	}
 }
 
 void KeepAlivePacket(Player& player, GamePacket* packet)
 {
 #ifdef LOG_PACKETS_INFO
-	std::cout << player.generalInfo.nickname << ": Keeping alive!" << std::endl;
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": Keeping alive!" << std::endl;
 #endif
 	DataBuffer respone;
 	respone.AllocateBuffer(5 + 8);
@@ -113,10 +136,29 @@ void KeepAlivePacket(Player& player, GamePacket* packet)
 	SendGamePacket(respone, player.connection.tcpconnection, player.connection.compressionThreshold);
 }
 
+void TimeUpdatePacket(Player& player, GamePacket* packet)
+{
+	player.serverInfo.serverTime.worldAge = packet->data.ReadLong();
+	player.serverInfo.serverTime.timeOfDay = packet->data.ReadLong();
+#ifdef LOG_PACKETS_INFO
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": Update of time: worldAge: " << player.serverInfo.serverTime.worldAge <<
+		", timeOfDay: " << player.serverInfo.serverTime.timeOfDay << std::endl;
+#endif
+}
+
+void DisconnectPacket(Player& player, GamePacket* packet)
+{
+	player.connection.connectionState = Disconnected;
+	player.connection.tcpconnection.CloseConnection();
+#ifdef LOG_PACKETS_INFO
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": Kicked from server with reason: " << packet->data.ReadMinecraftString(32767) << std::endl;
+#endif
+}
+
 void SendPlayerPosition(Player& player)
 {
 #ifdef LOG_PACKETS_INFO
-	std::cout << player.generalInfo.nickname << ": Sending player position: (" <<
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": Sending player position: (" <<
 		player.gameplayInfo.positionAndLook.x << ", " << player.gameplayInfo.positionAndLook.y << ", " << player.gameplayInfo.positionAndLook.z << ")" << std::endl;
 #endif
 	DataBuffer packet;
@@ -132,7 +174,7 @@ void SendPlayerPosition(Player& player)
 void SendPlayerPositionAndLook(Player& player)
 {
 #ifdef LOG_PACKETS_INFO
-	std::cout << player.generalInfo.nickname << ": Sending player position and look: (" <<
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": Sending player position and look: (" <<
 		player.gameplayInfo.positionAndLook.x << ", " << player.gameplayInfo.positionAndLook.y << ", " << player.gameplayInfo.positionAndLook.z << ") (" <<
 		player.gameplayInfo.positionAndLook.yaw << ", " << player.gameplayInfo.positionAndLook.pitch << ")" << std::endl;
 #endif
@@ -145,6 +187,18 @@ void SendPlayerPositionAndLook(Player& player)
 	packet.WriteFloat(player.gameplayInfo.positionAndLook.yaw);
 	packet.WriteFloat(player.gameplayInfo.positionAndLook.pitch);
 	packet.WriteBool(true); // on ground parameter. Seems like vanilla server doesn't check this since it was created and until this days
+	SendGamePacket(packet, player.connection.tcpconnection, player.connection.compressionThreshold);
+}
+
+void SendClientStatus(Player& player, Minecraft_Int actionID)
+{
+#ifdef LOG_PACKETS_INFO
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": Sending client status with id: " << actionID << std::endl;
+#endif
+	DataBuffer packet;
+	packet.AllocateBuffer(10);
+	packet.WriteVarInt(0x03);
+	packet.WriteVarInt(actionID);
 	SendGamePacket(packet, player.connection.tcpconnection, player.connection.compressionThreshold);
 }
 

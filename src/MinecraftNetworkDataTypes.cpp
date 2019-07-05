@@ -420,17 +420,17 @@ World::~World()
 	}
 }
 
-void AsyncGamePacketQueue::Queue(GamePacket* newPacket)
+void AsyncGamePacketQueue::Queue(char* newPacket)
 {
 	mutex.lock();
 	gamePacketsQueue.push(newPacket);
 	mutex.unlock();
 }
 
-GamePacket* AsyncGamePacketQueue::Dequeue()
+char* AsyncGamePacketQueue::Dequeue()
 {
+	char* packet = nullptr;
 	mutex.lock();
-	GamePacket* packet = nullptr;
 	if (gamePacketsQueue.size() > 0)
 	{
 		packet = gamePacketsQueue.front();

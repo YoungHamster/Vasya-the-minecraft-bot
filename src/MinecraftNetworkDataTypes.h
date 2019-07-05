@@ -205,10 +205,10 @@ class AsyncGamePacketQueue
 {
 private:
 	std::mutex mutex;
-	std::queue<GamePacket*> gamePacketsQueue;
+	std::queue<char*> gamePacketsQueue;
 public:
-	void Queue(GamePacket* newPacket);
-	GamePacket* Dequeue();
+	void Queue(char* newPacket);
+	char* Dequeue();
 };
 
 struct Connection
@@ -272,12 +272,19 @@ struct PlayerGameplayInfo
 	Minecraft_Float foodSaturation;
 };
 
+struct Time
+{
+	Minecraft_Long worldAge;
+	Minecraft_Long timeOfDay;
+};
+
 struct ServerInfo
 {
 	Minecraft_UnsignedByte difficulty;
 	Minecraft_UnsignedByte maxPlayers;
 	std::string levelType;
 	std::vector <PlayerInfo> playersInfo;
+	Time serverTime;
 };
 
 struct Player
@@ -286,7 +293,7 @@ struct Player
 	PlayerGameplayInfo gameplayInfo;
 	ServerInfo serverInfo;
 
-	clock_t lastTimeSentPosition = 0;
+	Minecraft_Long lastTimeSentPosition = 0;
 	bool spawned = false;
 
 	Connection connection;
