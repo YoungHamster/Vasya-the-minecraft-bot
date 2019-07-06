@@ -201,14 +201,15 @@ struct GamePacket
 	DataBuffer data;/* packet id(that is already written to packetID) and actual data */
 };
 
-class AsyncGamePacketQueue
+class AsyncPacketsQueue
 {
 private:
 	std::mutex mutex;
-	std::queue<char*> gamePacketsQueue;
+	std::queue<char*> packetsQueue;
 public:
 	void Queue(char* newPacket);
 	char* Dequeue();
+	void ClearQueue();
 };
 
 struct Connection
@@ -220,7 +221,7 @@ struct Connection
 	Minecraft_UnsignedShort serverPort = 25565;
 
 	char* receivingBuffer = nullptr;
-	AsyncGamePacketQueue packetQueue;
+	AsyncPacketsQueue packetQueue;
 
 
 	ConnectionStates connectionState = Disconnected;
@@ -294,6 +295,7 @@ struct Player
 	ServerInfo serverInfo;
 
 	Minecraft_Long lastTimeSentPosition = 0;
+	clock_t lastTimeReceivedKeepAlive = 0;
 	bool spawned = false;
 
 	Connection connection;

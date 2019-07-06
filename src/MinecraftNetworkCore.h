@@ -34,6 +34,8 @@ void DisconnectPacket(Player& player, GamePacket* packet); // 0x1B in protocol 4
 void SendPlayerPosition(Player& player); // 0x10 in protcol 404
 void SendPlayerPositionAndLook(Player& player); // 0x11 in protcol 404
 void SendClientStatus(Player& player, Minecraft_Int actionID); // 0x03 in protcol 404
+void SendClientSettings(Player& player, std::string locale, Minecraft_Byte viewDistance, Minecraft_Int chatMode,
+						bool chatColors, Minecraft_UnsignedByte displayedSkinParts, Minecraft_Int mainHand); // 0x03 in protcol 404
 
 void SendCompressedGamePacket(DataBuffer& data, const TCPClient& tcpconnection, int compressionThreshold);
 void SendUncompressedGamePacket(DataBuffer& data, const TCPClient& tcpconnection);

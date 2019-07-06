@@ -420,22 +420,32 @@ World::~World()
 	}
 }
 
-void AsyncGamePacketQueue::Queue(char* newPacket)
+void AsyncPacketsQueue::Queue(char* newPacket)
 {
 	mutex.lock();
-	gamePacketsQueue.push(newPacket);
+	packetsQueue.push(newPacket);
 	mutex.unlock();
 }
 
-char* AsyncGamePacketQueue::Dequeue()
+char* AsyncPacketsQueue::Dequeue()
 {
 	char* packet = nullptr;
 	mutex.lock();
-	if (gamePacketsQueue.size() > 0)
+	if (packetsQueue.size() > 0)
 	{
-		packet = gamePacketsQueue.front();
-		gamePacketsQueue.pop();
+		packet = packetsQueue.front();
+		packetsQueue.pop();
 	}
 	mutex.unlock();
 	return packet;
+}
+
+void AsyncPacketsQueue::ClearQueue()
+{
+	mutex.lock();
+	while(packetsQueue.size() > 0)
+	{
+		packetsQueue.pop();
+	}
+	mutex.unlock();
 }

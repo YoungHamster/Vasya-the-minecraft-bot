@@ -26,6 +26,7 @@ int main()
 			DisconnectFromServer(player);
 		player.connection.compressionThreshold = -1;
 		player.spawned = false;
+		player.connection.packetQueue.ClearQueue();
 	}
 	return 1337;
 }

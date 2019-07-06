@@ -5,7 +5,7 @@ void HandlePlayer(Player& player)
 	DispatchGamePacket(player);
 	if (player.spawned && player.serverInfo.serverTime.worldAge - player.lastTimeSentPosition >= 20)
 	{
-		SendPlayerPosition(player);
+		SendPlayerPositionAndLook(player);
 		player.lastTimeSentPosition = player.serverInfo.serverTime.worldAge;
 	}
 	/*if ((clock() - player.lastTimeSentPosition) >= (50 * 15))
@@ -68,6 +68,9 @@ void DispatchGamePacket(Player& player)
 	case 0x25: JoinGamePacket(player, packet); break;
 	case 0x32: PlayerPositionAndLookPacket(player, packet); break;
 	case 0x4A: TimeUpdatePacket(player, packet); break;
+	default:
+		//6std::cout << "[ DEBUG INFO ]: " << player.generalInfo.nickname << ": ignoring packet with id: 0x" << std::hex << packet->packetID << std::dec << std::endl;
+		break;
 	}
 	delete packet;
 }
@@ -90,6 +93,7 @@ void JoinGamePacket(Player& player, GamePacket* packet)
 	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": server level type is: " << player.serverInfo.levelType << std::endl;
 	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": server reduced debug info is: " << reducedDebugInfo << std::endl;
 #endif
+	SendClientSettings(player, "en_GB", 4, 0, false, 0, 1);
 }
 
 void PlayerPositionAndLookPacket(Player& player, GamePacket* packet)
@@ -202,6 +206,26 @@ void SendClientStatus(Player& player, Minecraft_Int actionID)
 	SendGamePacket(packet, player.connection.tcpconnection, player.connection.compressionThreshold);
 }
 
+void SendClientSettings(Player& player, std::string locale, Minecraft_Byte viewDistance, Minecraft_Int chatMode, 
+						bool chatColors, Minecraft_UnsignedByte displayedSkinParts, Minecraft_Int mainHand)
+{
+#ifdef LOG_PACKETS_INFO
+	std::cout << "[ PACKET INFO ]: " << player.generalInfo.nickname << ": Sending client settings: locale: " << locale <<
+		", view distance: " << (int)viewDistance << ", chat mode: " << chatMode << ", chat colors: " << chatColors << ", displayed skin parts: " << (int)displayedSkinParts <<
+		", main hand: " << mainHand << std::endl;
+#endif
+	DataBuffer packet;
+	packet.AllocateBuffer(5 + (16 + 5) + 1 + 5 + 1 + 1 + 5);
+	packet.WriteVarInt(0x04);
+	packet.WriteMinecraftString(locale, 16);
+	packet.WriteByte(viewDistance);
+	packet.WriteVarInt(chatMode); // Chat Mode	VarInt Enum	0: enabled, 1 : commands only, 2 : hidden
+	packet.WriteBool(chatColors); // Chat Colors	Boolean	“Colors” multiplayer setting
+	packet.WriteUnsignedByte(displayedSkinParts); // Displayed Skin Parts	Unsigned Byte	Bit mask, see https://wiki.vg/Protocol#Client_Settings
+	packet.WriteVarInt(mainHand); // Main Hand	VarInt Enum	0 : Left, 1 : Right
+	SendGamePacket(packet, player.connection.tcpconnection, player.connection.compressionThreshold);
+}
+
 void ConnectToServer(Player& player, const std::string& nickname, const std::string& ip, const std::string& port)
 {
 	player.generalInfo.nickname = nickname;
@@ -218,7 +242,7 @@ void ConnectToServer(Player& player, const std::string& nickname, const std::str
 
 	DataBuffer sendBuffer;
 	// Send handshake packet
-	sendBuffer.AllocateBuffer(5 + 255 + 2 + 5); // maximum size of data in this packet
+	sendBuffer.AllocateBuffer(5 + (255 + 5) + 2 + 5); // maximum size of data in this packet
 	sendBuffer.WriteVarInt(0x00); // packet id
 	sendBuffer.WriteVarInt(404); // protocol version(404 for minecraft 1.13.2)
 	sendBuffer.WriteMinecraftString(ip, 255);
@@ -229,7 +253,7 @@ void ConnectToServer(Player& player, const std::string& nickname, const std::str
 	SendGamePacket(sendBuffer, player.connection.tcpconnection, player.connection.compressionThreshold);
 
 	// Send login start packet
-	sendBuffer.AllocateBuffer(5 + 16); // maximum size of data in this packet
+	sendBuffer.AllocateBuffer(5 + (16 + 5)); // maximum size of data in this packet
 	sendBuffer.WriteVarInt(0x00); // packet id
 	sendBuffer.WriteMinecraftString(nickname, 16);
 	player.connection.connectionState = Login;
